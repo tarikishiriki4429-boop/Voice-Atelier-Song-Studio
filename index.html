@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101421">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Voice Atelier">
+  <meta name="description" content="声から曲を作る。歌詞、区間別録音、ボーカルレイヤー、ミキシング。">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Voice Atelier — Song Studio</title>
+</head>
+<body>
+<div class="app">
+  <header class="site-header">
+    <div class="brand"><span class="brand-icon">◉</span><div><small>SONGWRITING WORKSPACE</small><h1>Voice Atelier <span class="version">SONG STUDIO · v0.2.0</span></h1></div></div>
+    <div class="privacy">● 端末内録音 / サーバー送信なし</div>
+  </header>
+  <main>
+    <section class="intro">
+      <div><span class="overline">WRITE / RECORD / LAYER / ARRANGE</span><h2>声から、曲の形をつくる。</h2><p>歌詞をブロックで管理し、何度でも重ね録り。つなぐ位置を動かして、ひとつの曲へ。</p></div>
+      <div class="project-title"><label for="projectName">プロジェクト名</label><input id="projectName" maxlength="60" value="新しい曲" autocomplete="off"></div>
+    </section>
+    <section class="panel transport-panel" aria-labelledby="transport-title">
+      <div class="transport-heading"><div><span class="overline">01 / RHYTHM & PLAYBACK</span><h3 id="transport-title">演奏とリズム</h3></div><span id="saveStatus" class="save-pill">準備中</span></div>
+      <div class="transport-row">
+        <button id="playBtn" class="btn primary">▶ 再生</button><button id="stopBtn" class="btn ghost">■ 停止</button>
+        <span id="playTime" class="time">00:00.0 / 00:00.0</span><input type="range" id="seek" min="0" max="100" step=".1" value="0" aria-label="曲の再生位置">
+      </div>
+      <div class="rhythm-row">
+        <label class="compact-field">BPM <input id="bpm" type="number" min="40" max="240" step="1" value="100" inputmode="numeric"></label>
+        <label class="compact-field">拍子 <select id="beats"><option value="4">4/4</option><option value="3">3/4</option><option value="6">6/4</option></select></label>
+        <label class="check"><input id="metroEnabled" type="checkbox" checked> メトロノーム</label>
+        <label class="check"><input id="metroAudible" type="checkbox" checked> 音を鳴らす</label>
+        <label class="metro-volume">音量 <input id="metroVolume" type="range" min="0" max="100" value="45" aria-label="メトロノーム音量"></label>
+        <div class="beat-visual" aria-label="拍の表示"><div id="beatDots" class="beat-dots"></div><span id="beatCount">—</span></div>
+      </div>
+      <div class="note">メトロノームは録音にも使用できます。録音時は有線ヘッドホン推奨。BPMを変更しても録音音声そのものは伸縮しません。</div>
+    </section>
+    <div class="editor-grid">
+      <section class="panel sections-panel" aria-labelledby="sections-title">
+        <div class="section-head"><div><span class="overline">02 / LYRICS & STRUCTURE</span><h3 id="sections-title">歌詞と曲の構成</h3></div><button id="addSection" class="btn ghost small">＋ ブロック</button></div>
+        <p class="sub">ブロックの「開始位置」を動かして、間奏の余白や重なりも自由に設定できます。歌詞は自動保存。</p>
+        <div id="sectionCards" class="section-cards"></div>
+        <div class="section-actions"><button id="packSections" class="btn ghost small">↪ 順番に並べ直す</button><label class="check"><input id="snap" type="checkbox" checked> 拍にスナップ</label></div>
+      </section>
+      <div class="stack">
+        <section class="panel recorder-panel" aria-labelledby="rec-title">
+          <div class="section-head"><div><span class="overline">03 / RECORD</span><h3 id="rec-title">ブロック別録音</h3></div><span class="tag">重ね録り / テイク保持</span></div>
+          <div class="two-inputs"><label>録音するブロック<select id="recordSection"></select></label><label>声のレイヤー<select id="recordLane"></select></label></div>
+          <div class="timer-box"><div id="captureStatus" class="tiny">待機中</div><div id="recordTimer" class="big-timer">00:00.0</div><div class="meter"><div id="meterFill"></div></div><div class="meter-meta">入力ピーク <strong id="peakReadout">— dBFS</strong><span id="clipWarning" class="warning" hidden>音割れに注意</span></div></div>
+          <button id="recordBtn" class="btn record-btn"><span id="recordSymbol">●</span> <span id="recordLabel">このブロックを録音</span></button>
+          <div class="record-options"><label class="check"><input id="countIn" type="checkbox" checked> 録音前に1小節カウント</label><label class="check"><input id="hearOthers" type="checkbox" checked> 他の声を聴く</label><label class="check"><input id="autoStop" type="checkbox" checked> ブロック終端で自動停止</label></div>
+          <p class="note">録るたびに新しいテイクを追加します（既存音声は上書きしません）。1回の録音は最大3分。録音中は画面を閉じないでください。</p>
+        </section>
+        <section class="panel mixer-panel" aria-labelledby="mixer-title">
+          <div class="section-head"><div><span class="overline">04 / VOCAL MIX</span><h3 id="mixer-title">声を整える</h3></div><span class="tag" id="editingLane">リード</span></div>
+          <label class="select-label">音作りプリセット<select id="preset"><option value="custom">カスタム</option><option value="natural">自然な声</option><option value="warm">温かい声</option><option value="clear">明瞭な声</option><option value="radio">ラジオ風</option></select></label>
+          <div id="effectControls" class="fx-grid"></div>
+          <p class="note">録音原本はそのまま。ノイズゲートは無音部分の雑音を下げるもので、声に重なったノイズの完全除去ではありません。</p>
+        </section>
+      </div>
+    </div>
+    <section class="panel timeline-panel" aria-labelledby="timeline-title">
+      <div class="section-head"><div><span class="overline">05 / ARRANGEMENT</span><h3 id="timeline-title">タイムラインと声の重ね合わせ</h3></div><div class="row-buttons"><button id="addLane" class="btn ghost small">＋ 声のレイヤー</button><button id="importBtn" class="btn ghost small">＋ 音声を取り込む</button></div></div>
+      <p class="sub">色付きの録音クリップを横にドラッグすると、音の入りを調整できます。曲のブロックも上の構成欄から動かせます。</p>
+      <div class="timeline-scroll" id="timelineScroll"><div class="timeline-inner" id="timelineInner"><div id="ruler" class="ruler"></div><div id="arrangeStrip" class="arrange-strip"></div><div id="lanes" class="lanes"></div><div id="globalPlayhead" class="global-playhead"></div></div></div>
+      <div class="timeline-controls"><label>横方向の拡大 <input id="zoom" type="range" min="24" max="130" step="2" value="48"></label><span>クリップを選ぶと微調整・削除ができます</span></div>
+      <div id="clipInspector" class="clip-inspector">録音を選択すると、ここで開始位置や音量を細かく調整できます。</div>
+    </section>
+    <section class="panel export-panel" aria-labelledby="export-title">
+      <div class="section-head"><div><span class="overline">06 / SAVE & EXPORT</span><h3 id="export-title">曲を保存する</h3></div><span class="tag">ローカル保存</span></div>
+      <div class="export-controls"><label class="check"><input id="normalize" type="checkbox" checked> WAVの音量を正規化</label><label class="check"><input id="tail" type="checkbox" checked> 残響の余韻を残す</label></div>
+      <div class="export-buttons"><button id="exportMix" class="btn primary">↓ 曲全体を24bit WAVで保存</button><button id="backupBtn" class="btn ghost">↓ プロジェクト一式ZIPで保存</button><button id="restoreBtn" class="btn ghost">↑ プロジェクトZIPから復元</button></div>
+      <p class="note">大切な曲はZIPでバックアップしてください。自動保存はiPadのSafariデータに依存し、消去・容量整理・URL変更で読み込めなくなる場合があります。復元すると現在の編集内容は置き換わります。</p>
+    </section>
+    <details class="help"><summary>使い方・無料でiPadに入れる方法</summary><div><p>① 歌詞とBPMを入力 → ② ブロックを選び録音 → ③ レイヤーを追加してハモリを録音 → ④ タイムラインでタイミングを調整 → ⑤ WAVやZIPを書き出します。</p><p>Netlifyは不要。GitHub Pagesの無料公開リポジトリにこの一式を配置し、公開HTTPSのURLをiPad Safariで開きます。共有→「ホーム画面に追加」でアプリのように使用できます。初回アクセスとアップデート時はネット接続が必要です。インストール後もオフライン状態での動作は端末・Safari側のキャッシュ維持状況に依存します。</p><p>コードはGitHubで公開されますが、歌詞や録音音声はブラウザー内のIndexedDBに保存し、このアプリからサーバーへアップロードしません。既存Netlifyサイトとは別の保存領域です。</p></div></details>
+  </main>
+  <footer>VOICE ATELIER · SONG STUDIO <span id="deviceStatus">iPad / Safari向け</span></footer>
+</div>
+<input id="fileInput" type="file" accept="audio/*,.wav,.mp3,.m4a,.aac" hidden><input id="backupInput" type="file" accept=".zip,application/zip" hidden>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="./app.js" defer></script>
+</body></html>
