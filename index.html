@@ -15,7 +15,7 @@
 <body>
 <div class="app">
   <header class="site-header">
-    <div class="brand"><span class="brand-icon">◉</span><div><small>SONGWRITING WORKSPACE</small><h1>Voice Atelier <span class="version">SONG STUDIO · v0.2.0</span></h1></div></div>
+    <div class="brand"><span class="brand-icon">◉</span><div><small>SONGWRITING WORKSPACE</small><h1>Voice Atelier <span class="version">SONG STUDIO · v0.2.2</span></h1></div></div>
     <div class="privacy">● 端末内録音 / サーバー送信なし</div>
   </header>
   <main>
@@ -39,21 +39,21 @@
       </div>
       <div class="note">メトロノームは録音にも使用できます。録音時は有線ヘッドホン推奨。BPMを変更しても録音音声そのものは伸縮しません。</div>
     </section>
-    <div class="editor-grid">
-      <section class="panel sections-panel" aria-labelledby="sections-title">
-        <div class="section-head"><div><span class="overline">02 / LYRICS & STRUCTURE</span><h3 id="sections-title">歌詞と曲の構成</h3></div><button id="addSection" class="btn ghost small">＋ ブロック</button></div>
-        <p class="sub">ブロックの「開始位置」を動かして、間奏の余白や重なりも自由に設定できます。歌詞は自動保存。</p>
+    <div class="editor-grid" aria-label="歌詞と録音の独立スクロール領域">
+      <section class="panel sections-panel" id="sectionsPanel" aria-labelledby="sections-title">
+        <div class="section-head"><div><span class="overline">02 / LYRICS & STRUCTURE</span><h3 id="sections-title">歌詞と曲の構成</h3><div class="pane-label" aria-label="歌詞の領域は録音画面と独立してスクロールします">↕ 歌詞だけスクロール</div></div><button id="addSection" class="btn ghost small">＋ ブロック</button></div>
+        <p class="sub">⠿ を上下にドラッグして並べ替え。複製時は「歌詞だけ／録音も」を選べます。<strong>左の歌詞を上下にスクロールしても、右の録音ボタンはそのまま</strong>です。</p>
         <div id="sectionCards" class="section-cards"></div>
         <div class="section-actions"><button id="packSections" class="btn ghost small">↪ 順番に並べ直す</button><label class="check"><input id="snap" type="checkbox" checked> 拍にスナップ</label></div>
       </section>
-      <div class="stack">
+      <div class="stack" id="rightEditor">
         <section class="panel recorder-panel" aria-labelledby="rec-title">
           <div class="section-head"><div><span class="overline">03 / RECORD</span><h3 id="rec-title">ブロック別録音</h3></div><span class="tag">重ね録り / テイク保持</span></div>
           <div class="two-inputs"><label>録音するブロック<select id="recordSection"></select></label><label>声のレイヤー<select id="recordLane"></select></label></div>
           <div class="timer-box"><div id="captureStatus" class="tiny">待機中</div><div id="recordTimer" class="big-timer">00:00.0</div><div class="meter"><div id="meterFill"></div></div><div class="meter-meta">入力ピーク <strong id="peakReadout">— dBFS</strong><span id="clipWarning" class="warning" hidden>音割れに注意</span></div></div>
           <button id="recordBtn" class="btn record-btn"><span id="recordSymbol">●</span> <span id="recordLabel">このブロックを録音</span></button>
           <div class="record-options"><label class="check"><input id="countIn" type="checkbox" checked> 録音前に1小節カウント</label><label class="check"><input id="hearOthers" type="checkbox" checked> 他の声を聴く</label><label class="check"><input id="autoStop" type="checkbox" checked> ブロック終端で自動停止</label></div>
-          <p class="note">録るたびに新しいテイクを追加します（既存音声は上書きしません）。1回の録音は最大3分。録音中は画面を閉じないでください。</p>
+          <p class="note">歌詞のブロックを左側で動かしても、録音画面は動きません。録るたびに新しいテイクを追加します（既存音声は上書きしません）。1回の録音は最大3分。録音中は画面を閉じないでください。</p>
         </section>
         <section class="panel mixer-panel" aria-labelledby="mixer-title">
           <div class="section-head"><div><span class="overline">04 / VOCAL MIX</span><h3 id="mixer-title">声を整える</h3></div><span class="tag" id="editingLane">リード</span></div>
@@ -65,7 +65,7 @@
     </div>
     <section class="panel timeline-panel" aria-labelledby="timeline-title">
       <div class="section-head"><div><span class="overline">05 / ARRANGEMENT</span><h3 id="timeline-title">タイムラインと声の重ね合わせ</h3></div><div class="row-buttons"><button id="addLane" class="btn ghost small">＋ 声のレイヤー</button><button id="importBtn" class="btn ghost small">＋ 音声を取り込む</button></div></div>
-      <p class="sub">色付きの録音クリップを横にドラッグすると、音の入りを調整できます。曲のブロックも上の構成欄から動かせます。</p>
+      <p class="sub">色付きの録音クリップを横にドラッグすると、音の入りを調整できます。曲のブロックは左の「⠿」で並べ替えると、録音も一緒に移動します。</p>
       <div class="timeline-scroll" id="timelineScroll"><div class="timeline-inner" id="timelineInner"><div id="ruler" class="ruler"></div><div id="arrangeStrip" class="arrange-strip"></div><div id="lanes" class="lanes"></div><div id="globalPlayhead" class="global-playhead"></div></div></div>
       <div class="timeline-controls"><label>横方向の拡大 <input id="zoom" type="range" min="24" max="130" step="2" value="48"></label><span>クリップを選ぶと微調整・削除ができます</span></div>
       <div id="clipInspector" class="clip-inspector">録音を選択すると、ここで開始位置や音量を細かく調整できます。</div>
@@ -80,6 +80,13 @@
   </main>
   <footer>VOICE ATELIER · SONG STUDIO <span id="deviceStatus">iPad / Safari向け</span></footer>
 </div>
+<dialog id="duplicateDialog" class="duplicate-dialog" aria-labelledby="duplicateTitle">
+  <form method="dialog"><div class="duplicate-title"><h3 id="duplicateTitle">ブロックを複製</h3><button class="small-btn" value="cancel" aria-label="閉じる">×</button></div>
+    <p id="duplicateHint">複製する内容を選んでください。</p>
+    <div class="duplicate-actions"><button id="duplicateLyrics" class="btn primary" type="button">歌詞・設定だけ複製</button><button id="duplicateWithAudio" class="btn ghost" type="button">歌詞・設定・録音も複製</button></div>
+    <p class="note">複製先は元ブロックの直後に追加されます。並べ替えた後も、元の録音は削除されません。</p>
+  </form>
+</dialog>
 <input id="fileInput" type="file" accept="audio/*,.wav,.mp3,.m4a,.aac" hidden><input id="backupInput" type="file" accept=".zip,application/zip" hidden>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script src="./app.js" defer></script>

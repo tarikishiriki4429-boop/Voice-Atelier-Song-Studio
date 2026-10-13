@@ -80,8 +80,8 @@
   function renderDots(){const dots=$('beatDots');dots.replaceChildren(...Array.from({length:st.beats},(_,i)=>{const x=document.createElement('div');x.className='beat-dot'+(i===0?' first':'');return x;}));}
   function indicateBeat(num){const active=((num%st.beats)+st.beats)%st.beats;[...$('beatDots').children].forEach((n,i)=>n.classList.toggle('active',num!==null&&active===i));$('beatCount').textContent=num===null?'—':`${active+1}/${st.beats}`;}
   function renderSections(){const wrap=$('sectionCards');wrap.innerHTML='';st.sections.forEach((s,i)=>{
-    const card=document.createElement('div');card.className='section-card'+(st.selectedSection===s.id?' active':'');card.style.setProperty('--block-color',s.color);
-    card.innerHTML=`<div class="section-top"><span class="section-dot"></span><span class="section-name"></span><button class="small-btn rec-here" title="このブロックで録音">● 録音先</button><button class="small-btn up" title="上へ移動">↑</button><button class="small-btn down" title="下へ移動">↓</button><button class="small-btn delete" title="ブロックを削除">×</button></div><div class="section-settings"><label>名前 <input class="rename" maxlength="40" aria-label="ブロック名"></label><label>小節数 <input class="bars" type="number" min="1" max="48" step="1"></label><label>開始小節 <input class="bar-start" type="number" min="1" max="5000" step=".25"></label><span class="starts"></span></div><textarea class="lyrics" placeholder="この部分の歌詞を書く。\n何行でも入力できます。"></textarea><div class="section-move"><label>ブロック位置</label><button class="small-btn step-back" title="一拍前へ">−1拍</button><input class="start-slider" aria-label="ブロック開始位置" type="range" min="0" max="800" step="1"><button class="small-btn step-next" title="一拍後へ">+1拍</button><strong class="start-val"></strong></div>`;
+    const card=document.createElement('div');card.className='section-card'+(st.selectedSection===s.id?' active':'');card.dataset.sectionId=s.id;card.style.setProperty('--block-color',s.color);
+    card.innerHTML=`<div class="section-top"><button class="small-btn section-grip" type="button" title="長押しせず上下にドラッグして順番を変更" aria-label="ブロックをドラッグして並べ替え">⠿</button><span class="section-dot"></span><span class="section-name"></span><button class="small-btn rec-here" title="このブロックで録音">● 録音先</button><button class="small-btn duplicate" title="歌詞や録音を複製">⧉ 複製</button><button class="small-btn up" title="上へ移動">↑</button><button class="small-btn down" title="下へ移動">↓</button><button class="small-btn delete" title="ブロックを削除">×</button></div><div class="section-settings"><label>名前 <input class="rename" maxlength="40" aria-label="ブロック名"></label><label>小節数 <input class="bars" type="number" min="1" max="48" step="1"></label><label>開始小節 <input class="bar-start" type="number" min="1" max="5000" step=".25"></label><span class="starts"></span></div><textarea class="lyrics" placeholder="この部分の歌詞を書く。\n何行でも入力できます。"></textarea><div class="section-move"><label>ブロック位置</label><button class="small-btn step-back" title="一拍前へ">−1拍</button><input class="start-slider" aria-label="ブロック開始位置" type="range" min="0" max="800" step="1"><button class="small-btn step-next" title="一拍後へ">+1拍</button><strong class="start-val"></strong></div>`;
     card.querySelector('.section-name').textContent=s.name;
     card.querySelector('.rename').value=s.name;card.querySelector('.bars').value=s.bars;card.querySelector('.lyrics').value=s.lyrics;
     card.querySelector('.bar-start').value=+(1+s.startBeat/st.beats).toFixed(2);
@@ -89,7 +89,9 @@
     const slider=card.querySelector('.start-slider');slider.max=Math.max(800,Math.ceil(st.sections.reduce((m,a)=>Math.max(m,a.startBeat+a.bars*st.beats),0)+64));slider.value=s.startBeat;
     card.querySelector('.start-val').textContent=`${s.startBeat}拍`;
     function setStart(v){s.startBeat=clamp(v,0,20000);stopForArrangement();saveSoon();renderSections();renderTimeline();updateTime();}
-    card.querySelector('.rec-here').onclick=()=>{st.selectedSection=s.id;$('recordSection').value=s.id;renderSections();document.getElementById('rec-title').scrollIntoView({block:'nearest',behavior:'smooth'});};
+    card.querySelector('.rec-here').onclick=()=>{st.selectedSection=s.id;$('recordSection').value=s.id;renderSections();const panel=$('rightEditor');if(panel?.scrollHeight>panel.clientHeight){const recorder=$('rec-title');panel.scrollTo({top:panel.scrollTop+recorder.getBoundingClientRect().top-panel.getBoundingClientRect().top-15,behavior:'smooth'});}else document.getElementById('rec-title').scrollIntoView({block:'nearest',behavior:'smooth'});};
+    card.querySelector('.duplicate').onclick=()=>showDuplicateDialog(s.id);
+    installSectionReorder(card.querySelector('.section-grip'),card,s.id);
     card.querySelector('.up').onclick=()=>reorderSection(i,-1);card.querySelector('.down').onclick=()=>reorderSection(i,1);
     card.querySelector('.delete').onclick=()=>removeSection(s.id);
     card.querySelector('.rename').onchange=e=>{s.name=e.target.value.trim()||`パート${i+1}`;saveSoon();renderSections();refreshPickers();renderTimeline();};
@@ -100,10 +102,88 @@
     card.querySelector('.lyrics').oninput=e=>{s.lyrics=e.target.value;saveSoon();};
     wrap.append(card);
   });}
-  function reorderSection(i,d){const j=i+d;if(j<0||j>=st.sections.length)return;[st.sections[i],st.sections[j]]=[st.sections[j],st.sections[i]];saveSoon();renderSections();renderTimeline();}
+  // A change to the order reflows blocks in sequence, but never alters a clip's
+  // sectionId or offsetSec: every original take follows its parent block.
+  function reflowSections(){let beat=0;for(const block of st.sections){block.startBeat=beat;beat+=block.bars*st.beats;}}
+  function moveSection(from,to){
+    if(st.recording||st.starting||st.stopping)return toast('録音停止後に順番を変更してください。');
+    if(from<0||to<0||from>=st.sections.length||to>=st.sections.length||from===to)return;
+    stopForArrangement();const [block]=st.sections.splice(from,1);st.sections.splice(to,0,block);
+    reflowSections();st.selectedSection=block.id;saveSoon();renderAll();toast('ブロックと紐づく録音を一緒に移動しました。');
+  }
+  function reorderSection(i,d){moveSection(i,i+d);}
+  function installSectionReorder(grip,card,sectionId){
+    let drag=null;
+    function reset(){grip.classList.remove('grabbing');card.classList.remove('drag-origin');$('sectionCards').querySelectorAll('.drop-before,.drop-after').forEach(n=>n.classList.remove('drop-before','drop-after'));}
+    grip.addEventListener('pointerdown',e=>{
+      if(st.recording||st.starting||st.stopping||e.pointerType==='mouse'&&e.button!==0)return;
+      drag={id:e.pointerId,startY:e.clientY,over:null,after:false,moved:false};grip.setPointerCapture(e.pointerId);grip.classList.add('grabbing');
+    });
+    grip.addEventListener('pointermove',e=>{
+      if(!drag||drag.id!==e.pointerId)return;
+      const d=e.clientY-drag.startY;if(Math.abs(d)>8)drag.moved=true;if(!drag.moved)return;
+      e.preventDefault();const panel=$('sectionsPanel'),r=panel.getBoundingClientRect();
+      if(panel.scrollHeight>panel.clientHeight){if(e.clientY<r.top+60)panel.scrollTop-=16;else if(e.clientY>r.bottom-55)panel.scrollTop+=16;}
+      const cards=[...$('sectionCards').querySelectorAll('.section-card')];
+      reset();card.classList.add('drag-origin');
+      const target=cards.find(n=>{const x=n.getBoundingClientRect();return e.clientY>=x.top&&e.clientY<x.bottom;});
+      if(target&&target!==card){drag.over=target.dataset.sectionId;drag.after=e.clientY>target.getBoundingClientRect().top+target.getBoundingClientRect().height/2;target.classList.add(drag.after?'drop-after':'drop-before');}else drag.over=null;
+    });
+    grip.addEventListener('pointerup',e=>{
+      if(!drag||drag.id!==e.pointerId)return;const info=drag;drag=null;reset();
+      if(!info.moved||!info.over)return;
+      let from=st.sections.findIndex(x=>x.id===sectionId),to=st.sections.findIndex(x=>x.id===info.over)+(info.after?1:0);
+      if(from<to)to--;moveSection(from,to);
+    });
+    grip.addEventListener('pointercancel',()=>{drag=null;reset();});
+  }
+  function showDuplicateDialog(sectionId){
+    if(st.recording||st.starting||st.stopping)return toast('録音停止後に複製してください。');
+    const source=getSection(sectionId);if(!source)return;
+    if(st.sections.length>=40)return toast('ブロック数の上限（40個）です。');
+    const dlg=$('duplicateDialog');dlg.dataset.sourceId=sectionId;
+    $('duplicateHint').textContent=`「${source.name}」をどの内容で複製しますか？`;
+    dlg.showModal();
+  }
+  function nextDuplicateName(name){
+    const base=name.replace(/[②③④⑤⑥⑦⑧⑨⑩]$/,'').replace(/\s*\(\d+\)$/,'');
+    const taken=new Set(st.sections.map(s=>s.name));
+    const nums=['②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+    for(let i=0;i<100;i++){const candidate=base+(nums[i]||` (${i+2})`);if(!taken.has(candidate))return candidate.slice(0,40);}
+    return `${base} コピー`.slice(0,40);
+  }
+  async function duplicateSection(sectionId,includeAudio){
+    const source=getSection(sectionId);if(!source||st.recording||st.starting||st.stopping)return;
+    if(st.sections.length>=40)return toast('ブロックは最大40個までです。');
+    const originals=st.clips.filter(c=>c.sectionId===sectionId);
+    if(includeAudio&&st.clips.length+originals.length>MAX_CLIPS)return toast(`録音の上限は${MAX_CLIPS}個です。`);
+    const at=st.sections.findIndex(s=>s.id===sectionId);
+    const copy={...source,id:id('s'),name:nextDuplicateName(source.name),color:COLORS[st.sections.length%COLORS.length]};
+    const copies=includeAudio?originals.map(c=>({...safeClip(c),id:id('c'),sectionId:copy.id,buffer:c.buffer,blob:c.blob})):[];
+    const saved=[];
+    try{
+      // A copied recording is stored under its own key. Deleting the source
+      // must never remove the copied take's data.
+      for(const clip of copies)if(st.db){await dbPut('clips',clip.id,clip.blob);saved.push(clip.id);}
+    }catch(e){for(const key of saved)try{await dbDelete('clips',key);}catch(_){};
+      console.error('Duplicate failed',e);toast('録音の複製を保存できませんでした。容量を確認してください。');return;
+    }
+    stopForArrangement();st.sections.splice(at+1,0,copy);st.clips.push(...copies);
+    reflowSections();st.selectedSection=copy.id;st.selectedClip='';
+    $('duplicateDialog').close();saveSoon();renderAll();
+    scrollToLyrics(copy.id);toast(includeAudio?`「${copy.name}」を録音${copies.length}件ごと複製しました。`:`「${copy.name}」の歌詞と設定を複製しました。`);
+  }
+  function scrollToLyrics(sectionId){
+    const target=[...$('sectionCards').children].find(n=>n.dataset.sectionId===sectionId),panel=$('sectionsPanel');
+    if(!target)return;
+    if(getComputedStyle(panel).overflowY==='auto'&&panel.scrollHeight>panel.clientHeight){
+      const rect=target.getBoundingClientRect(),box=panel.getBoundingClientRect();
+      panel.scrollTo({top:panel.scrollTop+rect.top-box.top-65,behavior:'smooth'});
+    }else target.scrollIntoView({block:'nearest',behavior:'smooth'});
+  }
   function addSection(){if(st.recording)return toast('録音停止後に構成を編集してください。');const last=st.sections.at(-1);const s={id:id('s'),name:`パート${st.sections.length+1}`,bars:8,startBeat:last?last.startBeat+last.bars*st.beats:0,lyrics:'',color:COLORS[st.sections.length%COLORS.length]};st.sections.push(s);st.selectedSection=s.id;saveSoon();refreshPickers();renderSections();renderTimeline();}
   async function removeSection(sectionId){if(st.recording)return toast('録音中に削除できません。');if(st.sections.length<=1)return toast('ブロックは最低1個必要です。');const s=getSection(sectionId),count=st.clips.filter(c=>c.sectionId===sectionId).length;if(!confirm(`「${s.name}」を削除します。関連する録音${count}件も消えます。事前にZIPを保存してください。`))return;stopForArrangement();for(const c of st.clips.filter(c=>c.sectionId===sectionId)){try{if(st.db)await dbDelete('clips',c.id);}catch(e){console.warn(e);}}st.clips=st.clips.filter(c=>c.sectionId!==sectionId);st.sections=st.sections.filter(x=>x.id!==sectionId);st.selectedSection=st.sections[0].id;st.selectedClip='';saveSoon();refreshPickers();renderAll();}
-  function packSections(){if(st.recording)return toast('録音停止後に並べ替えてください。');if(!confirm('Aメロ→Bメロ…の順に隙間なく並べ直します。録音は各ブロックについて移動します。'))return;stopForArrangement();let beat=0;for(const s of st.sections){s.startBeat=beat;beat+=s.bars*st.beats;}saveSoon();renderAll();}
+  function packSections(){if(st.recording)return toast('録音停止後に並べ替えてください。');if(!confirm('現在の並び順に隙間なく配置し直します。録音も各ブロックと一緒に移動します。'))return;stopForArrangement();reflowSections();saveSoon();renderAll();}
   function addLane(){if(st.recording)return toast('録音停止後にレイヤーを追加してください。');if(st.lanes.length>=MAX_LANES)return toast('端末負荷を考慮して声のレイヤーは最大24本です。');const lane=makeLane(`声のレイヤー${st.lanes.length+1}`,st.lanes.length);st.lanes.push(lane);st.selectedLane=lane.id;saveSoon();refreshPickers();renderTimeline();renderEffects();}
   async function removeLane(laneId){if(st.recording)return toast('録音中に削除できません。');if(st.lanes.length===1)return toast('最低1レイヤー必要です。');const l=getLane(laneId),count=st.clips.filter(c=>c.laneId===laneId).length;if(!confirm(`「${l.name}」と関連する録音${count}件を消しますか？`))return;stopForArrangement();for(const c of st.clips.filter(c=>c.laneId===laneId)){try{if(st.db)await dbDelete('clips',c.id);}catch(e){console.warn(e);}}st.clips=st.clips.filter(c=>c.laneId!==laneId);st.lanes=st.lanes.filter(l=>l.id!==laneId);st.selectedLane=st.lanes[0].id;st.selectedClip='';saveSoon();refreshPickers();renderTimeline();renderEffects();}
   function selectLane(laneId){st.selectedLane=laneId;$('recordLane').value=laneId;renderEffects();saveSoon();}
@@ -348,7 +428,9 @@
     $('stopBtn').onclick=()=>{if(st.recording)void endRecording();else stopPlayback();};
     $('seek').oninput=e=>{const p=duration()*(+e.target.value)/100;st.position=p;if(st.playing&&!st.recording)void play(p).catch(err=>toast(err.message));else updateTime();};
     $('addSection').onclick=addSection;$('packSections').onclick=packSections;$('addLane').onclick=addLane;
-    $('recordSection').onchange=e=>{st.selectedSection=e.target.value;saveSoon();renderSections();};
+    $('recordSection').onchange=e=>{st.selectedSection=e.target.value;saveSoon();renderSections();scrollToLyrics(st.selectedSection);};
+    $('duplicateLyrics').onclick=()=>void duplicateSection($('duplicateDialog').dataset.sourceId,false);
+    $('duplicateWithAudio').onclick=()=>void duplicateSection($('duplicateDialog').dataset.sourceId,true);
     $('recordLane').onchange=e=>selectLane(e.target.value);
     $('recordBtn').onclick=()=>st.recording?void endRecording():void beginRecording();
     $('preset').onchange=e=>{const lane=getLane(st.selectedLane);if(!lane||!PRESETS[e.target.value])return;lane.fx={...PRESETS[e.target.value]};saveSoon();renderEffects();scheduleReplay();};
