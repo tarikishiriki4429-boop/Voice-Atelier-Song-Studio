@@ -64,3 +64,16 @@
 .mode-hint{margin:7px 0 2px;color:#afc7bd;font-size:11px;line-height:1.7}
 .overwrite-cut{position:absolute;top:0;bottom:0;pointer-events:none;z-index:1;background:repeating-linear-gradient(135deg,#060911b3 0px,#060911b3 6px,#ffffff22 6px,#ffffff22 9px);border-left:1px solid #ffe3a0a8;border-right:1px solid #ffe3a0a8}
 @media(max-width:700px){.record-mode-wrap select{min-width:180px}}
+
+/* v0.3.3 — discoverable add controls and three-mode recorder */
+.lane-add{color:#c2f1dc!important;background:#233f3c!important;border-color:#518b7a!important;font-size:16px!important;font-weight:800!important;min-width:31px;min-height:32px;touch-action:manipulation}
+.lane-remove{min-width:30px;min-height:32px;touch-action:manipulation}
+.lane-add:disabled{opacity:.35}
+.lane-add-row{min-height:72px;display:flex;align-items:center;gap:14px;position:relative;padding:12px;background:linear-gradient(90deg,#203342,#151d2e);border-top:1px dashed #5f7885;color:#bacbd6;font-size:12px;white-space:normal}
+.lane-add-row .btn{min-height:46px;font-size:13px;touch-action:manipulation;white-space:nowrap}
+.add-lane-rec{width:100%;margin-top:9px;min-height:39px;font-size:12px;touch-action:manipulation}
+@media(max-width:700px){.lane-controls{gap:2px}.lane-add-row{gap:8px;flex-wrap:wrap}.lane-add-row .btn{width:auto}}
+
+/* Leave enough room for the inline + and delete controls on iPad. */
+.lane-header{min-width:218px;width:218px}.global-playhead{left:218px}.lane-name{min-width:0}.lane-controls{flex-shrink:0}
+@media(max-width:700px){.lane-header{min-width:200px;width:200px}.global-playhead{left:200px}}
