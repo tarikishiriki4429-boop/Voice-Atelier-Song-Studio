@@ -52,3 +52,5 @@
 .duplicate-actions{display:grid;grid-template-columns:1fr;gap:12px;margin-top:20px}
 .duplicate-actions .btn{font-size:13px;min-height:49px}
 
+
+.bridge-status{margin:10px 0;padding:12px 15px;border-radius:10px;background:rgba(123,190,170,.12);color:#b9e7d8;line-height:1.6}.bridge-toggle{display:inline-flex;gap:8px;margin-bottom:13px;align-items:center}.row-buttons{flex-wrap:wrap}
