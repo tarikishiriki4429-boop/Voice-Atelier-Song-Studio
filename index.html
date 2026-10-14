@@ -15,7 +15,7 @@
 <body>
 <div class="app">
   <header class="site-header">
-    <div class="brand"><span class="brand-icon">◉</span><div><small>SONGWRITING WORKSPACE</small><h1>Voice Atelier <span class="version">SONG STUDIO · v0.3.1</span></h1></div></div>
+    <div class="brand"><span class="brand-icon">◉</span><div><small>SONGWRITING WORKSPACE</small><h1>Voice Atelier <span class="version">SONG STUDIO · v0.3.2</span></h1></div></div>
     <div class="privacy">● 端末内録音 / サーバー送信なし</div>
   </header>
   <main>
@@ -48,12 +48,14 @@
       </section>
       <div class="stack" id="rightEditor">
         <section class="panel recorder-panel" aria-labelledby="rec-title">
-          <div class="section-head"><div><span class="overline">03 / RECORD</span><h3 id="rec-title">ブロック別録音</h3></div><span class="tag">重ね録り / テイク保持</span></div>
+          <div class="section-head"><div><span class="overline">03 / RECORD</span><h3 id="rec-title">ブロック別録音</h3></div><span class="tag">録音モード切替</span></div>
           <div class="two-inputs"><label>録音するブロック<select id="recordSection"></select></label><label>声のレイヤー<select id="recordLane"></select></label></div>
+          <div class="record-mode-wrap"><label for="recordMode">録音方法</label><select id="recordMode" aria-label="重ね録りまたは上書き録音を選択"><option value="overdub">重ね録り（新しいテイクを追加）</option><option value="replace">上書き（録った範囲だけ差し替え）</option></select><button id="undoOverwriteBtn" class="btn ghost small" type="button" disabled>↶ 直前の上書きを戻す</button></div>
+          <p class="mode-hint" id="recordModeHint" aria-live="polite">重ね録り：以前のテイクを残して、新しい声を重ねます。</p>
           <div class="timer-box"><div id="captureStatus" class="tiny">待機中</div><div id="recordTimer" class="big-timer">00:00.0</div><div class="meter"><div id="meterFill"></div></div><div class="meter-meta">入力ピーク <strong id="peakReadout">— dBFS</strong><span id="clipWarning" class="warning" hidden>音割れに注意</span></div></div>
           <button id="recordBtn" class="btn record-btn"><span id="recordSymbol">●</span> <span id="recordLabel">このブロックを録音</span></button>
           <div class="record-options"><label class="check"><input id="countIn" type="checkbox" checked> 録音前に1小節カウント</label><label class="check"><input id="hearOthers" type="checkbox" checked> 他の声を聴く</label><label class="check"><input id="autoStop" type="checkbox" checked> ブロック終端で自動停止</label></div>
-          <p class="note">歌詞のブロックを左側で動かしても、録音画面は動きません。録るたびに新しいテイクを追加します（既存音声は上書きしません）。1回の録音は最大3分。録音中は画面を閉じないでください。</p>
+          <p class="note">歌詞のブロックを左側で動かしても、録音画面は動きません。「重ね録り」「上書き」を選択できます。上書きしても元の録音ファイルは削除しません。1回の録音は最大3分。録音中は画面を閉じないでください。</p>
         </section>
         <section class="panel mixer-panel" aria-labelledby="mixer-title">
           <div class="section-head"><div><span class="overline">04 / VOCAL MIX</span><h3 id="mixer-title">声を整える</h3></div><span class="tag" id="editingLane">リード</span></div>

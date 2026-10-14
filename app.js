@@ -11,7 +11,7 @@
   const FX={hp:75,gate:0,low:0,mid:1.5,high:1,deess:1,compressor:3,reverb:8};
   const PRESETS={natural:{...FX},warm:{hp:70,gate:10,low:2,mid:0,high:-1,deess:2,compressor:3,reverb:10},clear:{hp:100,gate:12,low:-2,mid:3,high:2,deess:3,compressor:4,reverb:6},radio:{hp:165,gate:22,low:-4,mid:5,high:-2,deess:2,compressor:6,reverb:1}};
   const FIELDS=[['hp','ローカット','Hz',40,220,5],['gate','無音部のノイズゲート','%',0,100,1],['low','低音','dB',-12,12,.5],['mid','中音','dB',-12,12,.5],['high','高音','dB',-12,12,.5],['deess','サ行の刺さり','dB',0,9,.5],['compressor','音量差を整える','/10',0,10,1],['reverb','残響','%',0,35,1]];
-  const st={projectName:'新しい曲',bpm:100,beats:4,sections:[],lanes:[],clips:[],selectedSection:'',selectedLane:'',selectedClip:'',ctx:null,db:null,playing:null,recording:null,starting:false,stopping:false,position:0,zoom:48,duration:0,saveTimer:0,toaster:0,replayTimer:0,raf:0,meterRaf:0,metro:null,stopSources:[],impulses:new WeakMap(),nextId:1,bridge:null};
+  const st={projectName:'新しい曲',bpm:100,beats:4,sections:[],lanes:[],clips:[],selectedSection:'',selectedLane:'',selectedClip:'',ctx:null,db:null,playing:null,recording:null,starting:false,stopping:false,position:0,zoom:48,duration:0,saveTimer:0,toaster:0,replayTimer:0,raf:0,meterRaf:0,metro:null,stopSources:[],impulses:new WeakMap(),nextId:1,bridge:null,overwriteHistory:[]};
   const clamp=(v,a,b)=>Math.min(b,Math.max(a,Number.isFinite(+v)?+v:a));
   const sTime=n=>{const x=Math.max(0,Number(n)||0);return `${String(Math.floor(x/60)).padStart(2,'0')}:${String(Math.floor(x)%60).padStart(2,'0')}.${Math.floor(x*10)%10}`;};
   const id=prefix=>`${prefix}${Date.now().toString(36)}${(st.nextId++).toString(36)}`;
@@ -27,8 +27,14 @@
   function setSaveStatus(label){$('saveStatus').textContent=label;}
   function safeSection(s,i){return {id:typeof s?.id==='string'?s.id:id('s'),name:String(s?.name||defaultSectionNames[i]||`パート${i+1}`).slice(0,40),bars:clamp(Math.round(s?.bars??8),1,48),startBeat:clamp(s?.startBeat??i*32,0,20000),lyrics:String(s?.lyrics||'').slice(0,50000),color:COLORS[i%COLORS.length]};}
   function safeLane(l,i){return {id:typeof l?.id==='string'?l.id:id('l'),name:String(l?.name||`声${i+1}`).slice(0,30),volume:clamp(l?.volume??100,0,200),pan:clamp(l?.pan??0,-100,100),mute:!!l?.mute,solo:!!l?.solo,fx:Object.fromEntries(FIELDS.map(([k,, ,min,max])=>[k,clamp(l?.fx?.[k]??FX[k],min,max)])),color:COLORS[i%COLORS.length],guide:!!l?.guide};}
-  function safeClip(c){return {id:c.id,sectionId:c.sectionId,laneId:c.laneId,offsetSec:clamp(c.offsetSec??0,-600,1200),volume:clamp(c.volume??100,0,200),mute:!!c.mute,filename:String(c.filename||'録音').slice(0,80),buffer:null,blob:null};}
-  function allData(){return {version:2,projectName:st.projectName,bpm:st.bpm,beats:st.beats,sections:st.sections.map(s=>({...s})),lanes:st.lanes.map(l=>({...l,fx:{...l.fx}})),clips:st.clips.map(({buffer,blob,...c})=>({...c})),selectedSection:st.selectedSection,selectedLane:st.selectedLane,normalize:$('normalize').checked,tail:$('tail').checked,metroEnabled:$('metroEnabled').checked,metroAudible:$('metroAudible').checked,metroVolume:+$('metroVolume').value,zoom:st.zoom,bridge:st.bridge,includeGuideExport:$('includeGuideExport').checked};}
+  function safeCuts(ranges){return (Array.isArray(ranges)?ranges:[]).slice(0,200).map(v=>({start:clamp(v.start,0,MAX_IMPORT_SEC),end:clamp(v.end,0,MAX_IMPORT_SEC)})).filter(v=>v.end>v.start);}
+  function safeClip(c){return {id:c.id,sectionId:c.sectionId,laneId:c.laneId,offsetSec:clamp(c.offsetSec??0,-600,1200),volume:clamp(c.volume??100,0,200),mute:!!c.mute,filename:String(c.filename||'録音').slice(0,80),cuts:safeCuts(c.cuts),buffer:null,blob:null};}
+  function safeOverwriteHistory(entries){return (Array.isArray(entries)?entries:[]).slice(-20).filter(x=>typeof x?.newClipId==='string'&&Array.isArray(x.previous)).map(x=>({newClipId:x.newClipId,previous:x.previous.slice(0,MAX_CLIPS).filter(p=>typeof p.id==='string').map(p=>({id:p.id,cuts:safeCuts(p.cuts)}))}));}
+  function visibleSpans(c){const length=c.buffer?.duration||0;if(!length)return [];const cuts=safeCuts(c.cuts).map(x=>({start:Math.min(length,x.start),end:Math.min(length,x.end)})).filter(x=>x.end>x.start).sort((a,b)=>a.start-b.start);const parts=[];let last=0;for(const cut of cuts){if(cut.start>last+.001)parts.push({start:last,end:cut.start});last=Math.max(last,cut.end);}if(last<length-.001)parts.push({start:last,end:length});return parts;}
+  function maskPreviousForOverwrite(newClip){const start=clipAt(newClip),end=start+newClip.buffer.duration,previous=[];for(const c of st.clips){if(c.id===newClip.id||c.laneId!==newClip.laneId||!c.buffer)continue;const oldStart=clipAt(c),a=Math.max(start,oldStart),b=Math.min(end,oldStart+c.buffer.duration);if(b<=a+.002)continue;previous.push({id:c.id,cuts:safeCuts(c.cuts)});c.cuts=safeCuts([...(c.cuts||[]),{start:a-oldStart,end:b-oldStart}]);}return previous;}
+  function undoLastOverwrite(){if(st.recording||st.starting||st.stopping)return;const event=st.overwriteHistory.pop();if(!event)return toast('戻せる上書き録音がありません。');stopForArrangement();for(const x of event.previous){const clip=getClip(x.id);if(clip)clip.cuts=safeCuts(x.cuts);}const newest=getClip(event.newClipId);if(newest)newest.mute=true;st.selectedClip=newest?.id||'';saveSoon();renderAll();toast('直前の上書きを元に戻しました。新しいテイクはミュートで残しています。',5200);}
+
+  function allData(){return {version:2,projectName:st.projectName,bpm:st.bpm,beats:st.beats,sections:st.sections.map(s=>({...s})),lanes:st.lanes.map(l=>({...l,fx:{...l.fx}})),clips:st.clips.map(({buffer,blob,...c})=>({...c})),selectedSection:st.selectedSection,selectedLane:st.selectedLane,normalize:$('normalize').checked,tail:$('tail').checked,metroEnabled:$('metroEnabled').checked,metroAudible:$('metroAudible').checked,metroVolume:+$('metroVolume').value,zoom:st.zoom,bridge:st.bridge,includeGuideExport:$('includeGuideExport').checked,recordMode:$('recordMode').value,overwriteHistory:st.overwriteHistory.map(x=>({newClipId:x.newClipId,previous:x.previous.map(p=>({id:p.id,cuts:safeCuts(p.cuts)}))}))};}
   function dbReq(r){return new Promise((resolve,reject)=>{r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
   async function dbOpen(){return new Promise((resolve,reject)=>{const request=indexedDB.open('voice-atelier-local-v1',2);request.onupgradeneeded=()=>{const d=request.result;for(const s of ['takes','settings','clips'])if(!d.objectStoreNames.contains(s))d.createObjectStore(s);};request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});}
   async function dbGet(store,key){return dbReq(st.db.transaction(store,'readonly').objectStore(store).get(key));}
@@ -44,7 +50,7 @@
       st.sections=data.sections.slice(0,40).map(safeSection);st.lanes=data.lanes.slice(0,MAX_LANES).map(safeLane);
       if(!st.sections.length||!st.lanes.length)throw new Error('曲の構成データが不正です');
       st.selectedSection=getSection(data.selectedSection)?data.selectedSection:st.sections[0].id;st.selectedLane=getLane(data.selectedLane)?data.selectedLane:st.lanes[0].id;
-      st.zoom=clamp(data.zoom??48,24,130);st.bridge=data.bridge||null;$('includeGuideExport').checked=data.includeGuideExport===true;$('normalize').checked=data.normalize!==false;$('tail').checked=data.tail!==false;
+      st.zoom=clamp(data.zoom??48,24,130);st.bridge=data.bridge||null;st.overwriteHistory=safeOverwriteHistory(data.overwriteHistory);$('recordMode').value=data.recordMode==='replace'?'replace':'overdub';$('includeGuideExport').checked=data.includeGuideExport===true;$('normalize').checked=data.normalize!==false;$('tail').checked=data.tail!==false;
       $('metroEnabled').checked=data.metroEnabled!==false;$('metroAudible').checked=data.metroAudible!==false;$('metroVolume').value=clamp(data.metroVolume??45,0,100);
       for(const m of (data.clips||[]).slice(0,MAX_CLIPS)){
         if(!m?.id||!getSection(m.sectionId)||!getLane(m.laneId))continue;
@@ -69,7 +75,8 @@
   async function audioCtx(resume=true){if(!Context)throw new Error('このブラウザーは音声APIを使用できません');if(!st.ctx)st.ctx=new Context({latencyHint:'interactive'});if(resume&&st.ctx.state==='suspended')await st.ctx.resume();return st.ctx;}
   function duration(){let end=1;for(const s of st.sections)end=Math.max(end,secAt(s)+s.bars*st.beats*beatSec());for(const c of st.clips)if(c.buffer){const s=getSection(c.sectionId);if(s)end=Math.max(end,Math.max(0,secAt(s)+c.offsetSec)+c.buffer.duration);}return end;}
   function clipAt(c){if(getLane(c.laneId)?.guide)return Math.max(0,c.offsetSec);const s=getSection(c.sectionId);return s?Math.max(0,secAt(s)+c.offsetSec):0;}
-  function syncUI(){ $('projectName').value=st.projectName;$('bpm').value=st.bpm;$('beats').value=st.beats;$('zoom').value=st.zoom;renderDots();refreshPickers(); }
+  function updateRecordHint(){const isReplace=$('recordMode').value==='replace';$('recordModeHint').textContent=isReplace?'上書き：選択した声レイヤーの今回録った時間だけ、古い音を再生から外します。前後の音は残り、原本は削除されません。':'重ね録り：以前のテイクを残して、新しい声を重ねます。';}
+  function syncUI(){ updateRecordHint(); $('projectName').value=st.projectName;$('bpm').value=st.bpm;$('beats').value=st.beats;$('zoom').value=st.zoom;renderDots();refreshPickers(); }
   function refreshPickers(){
     const a=$('recordSection'),b=$('recordLane'),previousA=a.value||st.selectedSection,previousB=b.value||st.selectedLane;
     a.replaceChildren(...st.sections.map(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name;return o;}));
@@ -223,6 +230,7 @@
         const el=document.createElement('div');el.className=`clip-block${st.selectedClip===c.id?' selected':''}${c.mute?' muted':''}`;
         el.style.left=`${clipAt(c)*st.zoom}px`;el.style.width=`${Math.max(16,c.buffer.duration*st.zoom)}px`;el.style.setProperty('--clip-color',l.color);
         const wave=document.createElement('canvas');wave.dataset.clip=c.id;const title=document.createElement('span');title.className='clip-name';title.textContent=`${getSection(c.sectionId)?.name||''} · ${c.filename}`;el.append(wave,title);
+        for(const cut of safeCuts(c.cuts)){const mark=document.createElement('div');mark.className='overwrite-cut';mark.style.left=`${Math.max(0,cut.start/c.buffer.duration*100)}%`;mark.style.width=`${Math.max(0,Math.min(c.buffer.duration,cut.end)-cut.start)/c.buffer.duration*100}%`;el.append(mark);}
         addDrag(el,()=>c.offsetSec,delta=>{let next=c.offsetSec+delta/st.zoom;if($('snap').checked)next=Math.round(next/beatSec())*beatSec();return clamp(next,-600,1200);},v=>{c.offsetSec=+v.toFixed(3);st.selectedClip=c.id;saveSoon();renderTimeline();renderInspector();updateTime();scheduleReplay();},'clip');
         el.onclick=()=>{st.selectedClip=c.id;st.selectedLane=l.id;renderTimeline();renderInspector();renderEffects();};body.append(el);
       }
@@ -248,7 +256,7 @@
     const volume=box.querySelector('.clip-volume');volume.value=c.volume;box.querySelector('.clip-vol-value').textContent=`${c.volume}%`;volume.oninput=()=>{c.volume=+volume.value;box.querySelector('.clip-vol-value').textContent=`${c.volume}%`;saveSoon();scheduleReplay();};
     const sel=box.querySelector('.clip-section');sel.replaceChildren(...st.sections.map(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name;return o;}));sel.value=c.sectionId;sel.onchange=()=>{const absolute=clipAt(c);c.sectionId=sel.value;c.offsetSec=+(absolute-secAt(getSection(c.sectionId))).toFixed(3);saveSoon();renderTimeline();renderInspector();scheduleReplay();};
   }
-  async function deleteClip(cid){if(st.recording)return toast('録音中に削除できません。');const c=getClip(cid);if(!c||!confirm(`「${c.filename}」を削除しますか？取り消しできません。`))return;stopForArrangement();if(st.db)try{await dbDelete('clips',cid);}catch(e){console.warn(e);toast('保存領域からの削除に失敗しました');}st.clips=st.clips.filter(x=>x.id!==cid);st.selectedClip='';saveSoon();renderTimeline();renderInspector();}
+  async function deleteClip(cid){if(st.recording)return toast('録音中に削除できません。');const c=getClip(cid);if(!c||!confirm(`「${c.filename}」を削除しますか？取り消しできません。`))return;stopForArrangement();const latest=st.overwriteHistory.at(-1);if(latest?.newClipId===cid){for(const item of latest.previous){const original=getClip(item.id);if(original)original.cuts=safeCuts(item.cuts);}st.overwriteHistory.pop();}else if(st.overwriteHistory.some(x=>x.newClipId===cid)){toast('古い上書き録音を削除しました。上書き範囲は残るため、必要ならZIPバックアップから復元してください。',6500);}if(st.db)try{await dbDelete('clips',cid);}catch(e){console.warn(e);toast('保存領域からの削除に失敗しました');}st.clips=st.clips.filter(x=>x.id!==cid);st.selectedClip='';saveSoon();renderTimeline();renderInspector();}
   function renderAll(){refreshPickers();renderSections();renderTimeline();renderInspector();renderEffects();updateButtons();}
   function updateTime(){st.duration=duration();st.position=clamp(st.position,0,st.duration);const position=playbackPos();$('playTime').textContent=`${sTime(position)} / ${sTime(st.duration)}`;$('seek').value=st.duration?(position/st.duration*100):0;
     const head=matchMedia('(max-width:700px)').matches?158:188;$('globalPlayhead').style.left=`${head+position*st.zoom}px`;$('globalPlayhead').style.display=st.playing?'block':'none';}
@@ -268,17 +276,18 @@
     const output=ctx.createGain(),limiter=ctx.createDynamicsCompressor(),gain=ctx.createGain();limiter.threshold.value=-3;limiter.knee.value=0;limiter.ratio.value=18;limiter.attack.value=.003;limiter.release.value=.1;gain.gain.value=.90;output.connect(limiter);limiter.connect(gain);gain.connect(ctx.destination);
     const reverb=ctx.createConvolver();reverb.buffer=makeIR(ctx);reverb.connect(output);
     const anySolo=st.lanes.some(l=>l.solo),sources=[];
-    for(const c of st.clips){const lane=getLane(c.laneId);if(!c.buffer||!lane||(options.excludeGuide&&lane.guide)||c.mute||lane.mute||(anySolo&&!lane.solo)||options.excludeClip===c.id)continue;
-      let start=clipAt(c),audioOffset=Math.max(0,offset-start);if(start+c.buffer.duration<=offset)continue;
-      const src=ctx.createBufferSource();src.buffer=gatedBuffer(c,lane,ctx);
+    for(const c of st.clips){const lane=getLane(c.laneId);if(!c.buffer||!lane||(options.excludeGuide&&lane.guide)||c.mute||lane.mute||(anySolo&&!lane.solo)||options.excludeClip===c.id||(options.excludeLane&&c.laneId===options.excludeLane))continue;
+      const start=clipAt(c),spans=visibleSpans(c).filter(span=>start+span.end>offset+.002);if(!spans.length)continue;
       const nodes=[filter(ctx,'highpass',lane.fx.hp,.707),filter(ctx,'lowshelf',180,null,lane.fx.low),filter(ctx,'peaking',2600,.9,lane.fx.mid),filter(ctx,'highshelf',7800,null,lane.fx.high),filter(ctx,'peaking',6200,1.4,-lane.fx.deess)];
       const comp=ctx.createDynamicsCompressor(),v=lane.fx.compressor;comp.threshold.value=-8-v*2.2;comp.knee.value=6;comp.ratio.value=1+v*.65;comp.attack.value=.005;comp.release.value=.16;nodes.push(comp);
       const amp=ctx.createGain();amp.gain.value=lane.volume/100*c.volume/100;nodes.push(amp);
-      src.connect(nodes[0]);for(let i=0;i<nodes.length-1;i++)nodes[i].connect(nodes[i+1]);let last=amp;
+      for(let i=0;i<nodes.length-1;i++)nodes[i].connect(nodes[i+1]);let last=amp;
       if(ctx.createStereoPanner){const pan=ctx.createStereoPanner();pan.pan.value=lane.pan/100;last.connect(pan);last=pan;}
       last.connect(output);
       if(lane.fx.reverb>0){const wet=ctx.createGain();wet.gain.value=lane.fx.reverb/100*1.3;last.connect(wet);wet.connect(reverb);}
-      const startWhen=when+Math.max(0,start-offset),playUntil=c.buffer.duration-audioOffset;if(playUntil>.002){src.start(startWhen,audioOffset,playUntil);sources.push(src);}
+      const audio=gatedBuffer(c,lane,ctx);
+      for(const span of spans){const from=Math.max(span.start,offset-start),len=span.end-from;if(len<=.002)continue;
+        const src=ctx.createBufferSource();src.buffer=audio;src.connect(nodes[0]);const at=when+Math.max(0,start+from-offset);src.start(at,from,len);sources.push(src);}
     }
     return sources;
   }
@@ -299,7 +308,8 @@
   function scheduleReplay(){if(!st.playing||st.recording)return;clearTimeout(st.replayTimer);st.replayTimer=setTimeout(()=>{const pos=playbackPos();void play(pos).catch(e=>toast(e.message));},160);}
   function updateButtons(){const rec=!!st.recording,lock=st.starting||st.stopping;
     $('recordBtn').classList.toggle('active',rec);$('recordSymbol').textContent=rec?'■':'●';$('recordLabel').textContent=rec?'録音を停止':'このブロックを録音';$('recordBtn').disabled=lock;
-    $('recordSection').disabled=rec||lock;$('recordLane').disabled=rec||lock;
+    $('recordSection').disabled=rec||lock;$('recordLane').disabled=rec||lock;$('recordMode').disabled=rec||lock;
+    $('undoOverwriteBtn').disabled=rec||lock||!st.overwriteHistory.length;
     $('playBtn').disabled=rec||lock;$('playBtn').textContent=st.playing&&!rec?'❚❚ 一時停止':'▶ 再生';
     $('stopBtn').disabled=(!st.playing&&!rec)||lock;
     $('exportMix').disabled=rec||lock||!st.clips.length;$('backupBtn').disabled=rec||lock;
@@ -322,7 +332,7 @@
       let countdownAt=ctx.currentTime+.22,recordAt=countdownAt+waitSecs;
       const endSeconds=$('autoStop').checked?Math.min(section.bars*st.beats*secPerBeat,MAX_RECORD_SEC):MAX_RECORD_SEC;
       const autoEnd=recordAt+endSeconds;
-      rec={ctx,stream,source,analyser,silent,node:null,sectionId:section.id,laneId:lane.id,chunks:[],frames:0,sampleRate:ctx.sampleRate,recordAt,autoEnd,flushResolve:null,fallback:false};st.recording=rec;
+      rec={ctx,stream,source,analyser,silent,node:null,sectionId:section.id,laneId:lane.id,mode:$('recordMode').value,chunks:[],frames:0,sampleRate:ctx.sampleRate,recordAt,autoEnd,flushResolve:null,fallback:false};st.recording=rec;
       source.connect(analyser);
       let node=null;
       if(ctx.audioWorklet?.addModule){try{
@@ -336,7 +346,7 @@
       rec.node=node;analyser.connect(node);node.connect(silent);silent.connect(ctx.destination);
       countdownAt=ctx.currentTime+.25;recordAt=countdownAt+waitSecs;rec.recordAt=recordAt;rec.autoEnd=recordAt+endSeconds;
       if(!rec.fallback)node.port.postMessage({type:'arm',startFrame:recordAt*ctx.sampleRate,endFrame:rec.autoEnd*ctx.sampleRate});
-      if($('hearOthers').checked){const when=recordAt;st.stopSources=buildSources(ctx,secAt(section),when);st.playing={ctx,when,offset:secAt(section)};}
+      if($('hearOthers').checked){const when=recordAt;st.stopSources=buildSources(ctx,secAt(section),when,{excludeLane:rec.mode==='replace'?lane.id:null});st.playing={ctx,when,offset:secAt(section)};}
       // count-in and playback share the grid; only captured frames after recordAt are kept.
       if(waitBeats||$('metroEnabled').checked){const gridZero=recordAt-section.startBeat*secPerBeat;startMetro(ctx,gridZero,section.startBeat-waitBeats,section.startBeat+Math.ceil(endSeconds/secPerBeat)+2,section.startBeat);}
       st.starting=false;updateButtons();st.raf=requestAnimationFrame(frame);st.meterRaf=requestAnimationFrame(meterTick);
@@ -349,8 +359,13 @@
       if(r.frames<=0){toast('音声が録れていません。マイク許可や入力音量、カウント終了までの長さを確認してください。',5500);return;}
       const buffer=r.ctx.createBuffer(1,r.frames,r.sampleRate),target=buffer.getChannelData(0);let pos=0;for(const arr of r.chunks){target.set(arr,pos);pos+=arr.length;}
       const blob=wav24(buffer),section=getSection(r.sectionId),lane=getLane(r.laneId),take=st.clips.filter(c=>c.sectionId===r.sectionId&&c.laneId===r.laneId).length+1;
-      const c={id:id('c'),sectionId:r.sectionId,laneId:r.laneId,offsetSec:0,volume:100,mute:false,filename:`${section?.name||'パート'} テイク${take}`,buffer,blob};st.clips.push(c);st.selectedClip=c.id;
-      await saveClip(c);saveSoon();toast(`${c.filename}を追加しました（${sTime(buffer.duration)}）。`);
+      const c={id:id('c'),sectionId:r.sectionId,laneId:r.laneId,offsetSec:0,volume:100,mute:false,filename:`${section?.name||'パート'} テイク${take}`,buffer,blob,cuts:[]};
+      // Keep the original material untouched until a valid new take has been decoded and saved.
+      await saveClip(c);
+      if(r.mode==='replace'){
+        const previous=maskPreviousForOverwrite(c);st.overwriteHistory.push({newClipId:c.id,previous});st.overwriteHistory=st.overwriteHistory.slice(-20);
+      }
+      st.clips.push(c);st.selectedClip=c.id;saveSoon();toast(r.mode==='replace'?`上書き録音を反映しました（${sTime(buffer.duration)}）。元の音声は保持しています。`:`${c.filename}を追加しました（${sTime(buffer.duration)}）。`);
     }catch(e){console.error(e);toast('録音の保存でエラーが発生しました。空き容量を確認してください。',6500);}
     finally{
       r.stream?.getTracks().forEach(t=>t.stop());try{r.node?.disconnect();r.source?.disconnect();r.analyser?.disconnect();r.silent?.disconnect();}catch(e){}
@@ -412,7 +427,7 @@
       if(st.db){
         await new Promise((resolve,reject)=>{const tx=st.db.transaction(['clips','settings'],'readwrite');const store=tx.objectStore('clips');store.clear();for(const c of clips)store.put(c.blob,c.id);tx.objectStore('settings').put({...data,clips:clips.map(({blob,buffer,...x})=>x)},'songStudioProjectV2');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
       }
-      st.sections=sections;st.lanes=lanes;st.clips=clips;st.projectName=String(data.projectName||'復元された曲').slice(0,60);st.bpm=clamp(data.bpm||100,40,240);st.beats=[3,4,6].includes(+data.beats)?+data.beats:4;st.zoom=clamp(data.zoom||48,24,130);st.bridge=data.bridge||null;$('includeGuideExport').checked=data.includeGuideExport===true;
+      st.sections=sections;st.lanes=lanes;st.clips=clips;st.projectName=String(data.projectName||'復元された曲').slice(0,60);st.bpm=clamp(data.bpm||100,40,240);st.beats=[3,4,6].includes(+data.beats)?+data.beats:4;st.zoom=clamp(data.zoom||48,24,130);st.bridge=data.bridge||null;st.overwriteHistory=safeOverwriteHistory(data.overwriteHistory);$('recordMode').value=data.recordMode==='replace'?'replace':'overdub';$('includeGuideExport').checked=data.includeGuideExport===true;
       st.selectedSection=sections.some(s=>s.id===data.selectedSection)?data.selectedSection:sections[0].id;st.selectedLane=lanes.some(l=>l.id===data.selectedLane)?data.selectedLane:lanes[0].id;st.selectedClip='';st.position=0;
       $('normalize').checked=data.normalize!==false;$('tail').checked=data.tail!==false;$('metroEnabled').checked=data.metroEnabled!==false;$('metroAudible').checked=data.metroAudible!==false;$('metroVolume').value=clamp(data.metroVolume??45,0,100);
       syncUI();renderAll();saveSoon();toast('プロジェクトを復元しました。歌詞と録音も読み込まれています。',5300);
@@ -455,12 +470,12 @@
       if(st.db){
         await new Promise((resolve,reject)=>{
           const tx=st.db.transaction(['settings','clips'],'readwrite'),clips=tx.objectStore('clips');clips.clear();clips.put(guideClip.blob,guideClip.id);
-          tx.objectStore('settings').put({...allData(),projectName:title,bpm,beats,sections,lanes,clips:[safeClip(guideClip)],selectedSection:sections[0].id,selectedLane:lanes[0].id,bridge:bridgeInfo,includeGuideExport:false},'songStudioProjectV2');
+          tx.objectStore('settings').put({...allData(),projectName:title,bpm,beats,sections,lanes,clips:[safeClip(guideClip)],selectedSection:sections[0].id,selectedLane:lanes[0].id,bridge:bridgeInfo,overwriteHistory:[],includeGuideExport:false},'songStudioProjectV2');
           tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
         });
       }
       st.projectName=title;st.bpm=bpm;st.beats=beats;st.sections=sections;st.lanes=lanes;st.clips=[guideClip];
-      st.bridge=bridgeInfo;st.selectedSection=sections[0].id;st.selectedLane=lanes[0].id;st.selectedClip=guideClip.id;st.position=0;
+      st.bridge=bridgeInfo;st.overwriteHistory=[];st.selectedSection=sections[0].id;st.selectedLane=lanes[0].id;st.selectedClip=guideClip.id;st.position=0;
       $('includeGuideExport').checked=false;syncUI();renderAll();saveSoon();
       $('bridgeStatus').textContent=`✓ ${sections.length}ブロック／BPM ${bpm}／${beats}拍子／ガイド ${sTime(sound.duration)}。歌声を別レイヤーに録音できます。`;
       toast('Melody Atelierから歌詞・曲構成・BPM・ガイド音声を読み込みました。',6500);
@@ -481,6 +496,8 @@
     $('duplicateLyrics').onclick=()=>void duplicateSection($('duplicateDialog').dataset.sourceId,false);
     $('duplicateWithAudio').onclick=()=>void duplicateSection($('duplicateDialog').dataset.sourceId,true);
     $('recordLane').onchange=e=>selectLane(e.target.value);
+    $('recordMode').onchange=()=>{saveSoon();updateRecordHint();};
+    $('undoOverwriteBtn').onclick=undoLastOverwrite;
     $('recordBtn').onclick=()=>st.recording?void endRecording():void beginRecording();
     $('preset').onchange=e=>{const lane=getLane(st.selectedLane);if(!lane||!PRESETS[e.target.value])return;lane.fx={...PRESETS[e.target.value]};saveSoon();renderEffects();scheduleReplay();};
     $('zoom').oninput=e=>{st.zoom=+e.target.value;renderTimeline();};$('zoom').onchange=saveSoon;

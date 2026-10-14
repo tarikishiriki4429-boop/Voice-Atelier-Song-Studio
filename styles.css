@@ -54,3 +54,13 @@
 
 
 .bridge-status{margin:10px 0;padding:12px 15px;border-radius:10px;background:rgba(123,190,170,.12);color:#b9e7d8;line-height:1.6}.bridge-toggle{display:inline-flex;gap:8px;margin-bottom:13px;align-items:center}.row-buttons{flex-wrap:wrap}
+
+/* v0.3.2: accessible recording mode + reversible, non-destructive punch-in */
+.record-mode-wrap{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:14px}
+.record-mode-wrap label{font-size:12px;color:#c7bde2;font-weight:750;white-space:nowrap}
+.record-mode-wrap select{min-width:205px;flex:1;max-width:100%;font-size:13px;border-color:#79669b;min-height:43px}
+.record-mode-wrap .btn{min-height:43px}
+.record-mode-wrap .btn:disabled{opacity:.48}
+.mode-hint{margin:7px 0 2px;color:#afc7bd;font-size:11px;line-height:1.7}
+.overwrite-cut{position:absolute;top:0;bottom:0;pointer-events:none;z-index:1;background:repeating-linear-gradient(135deg,#060911b3 0px,#060911b3 6px,#ffffff22 6px,#ffffff22 9px);border-left:1px solid #ffe3a0a8;border-right:1px solid #ffe3a0a8}
+@media(max-width:700px){.record-mode-wrap select{min-width:180px}}
