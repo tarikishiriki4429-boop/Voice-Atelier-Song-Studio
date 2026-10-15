@@ -15,7 +15,7 @@
 <body>
 <div class="app">
   <header class="site-header">
-    <div class="brand"><span class="brand-icon">◉</span><div><small>SONGWRITING WORKSPACE</small><h1>Voice Atelier <span class="version">SONG STUDIO · v0.3.4</span></h1></div></div>
+    <div class="brand"><span class="brand-icon">◉</span><div><small>SONGWRITING WORKSPACE</small><h1>Voice Atelier <span class="version">SONG STUDIO · v0.3.5</span></h1></div></div>
     <div class="privacy">● 端末内録音 / サーバー送信なし</div>
   </header>
   <main>
@@ -66,7 +66,7 @@
       </div>
     </div>
     <section class="panel timeline-panel" aria-labelledby="timeline-title">
-      <div class="section-head"><div><span class="overline">05 / ARRANGEMENT</span><h3 id="timeline-title">タイムラインと声の重ね合わせ</h3></div><div class="row-buttons"><button id="addLane" class="btn ghost small">＋ トラック追加</button><button id="importBtn" class="btn ghost small">＋ 音声を取り込む（15分）</button><button id="bridgeImportBtn" class="btn primary small">↗ Melody連携ZIPを取り込む</button></div></div>
+      <div class="section-head"><div><span class="overline">05 / ARRANGEMENT</span><h3 id="timeline-title">タイムラインと声の重ね合わせ</h3></div><div class="row-buttons"><button id="addLane" class="btn ghost small">＋ トラック追加</button><button id="importBtn" class="btn ghost small">＋ 音声を取り込む（15分）</button><button id="musicImportBtn" class="btn primary small">↙ Music連携ZIPを取り込む</button><button id="bridgeImportBtn" class="btn primary small">↗ Melody連携ZIPを取り込む</button></div></div>
       <p class="sub">各レイヤー名の隣の「＋」または最下段の「＋ トラックを追加」から増やせます。色付きの録音クリップを横にドラッグすると、音の入りを調整できます。曲のブロックは左の「⠿」で並べ替えると、録音も一緒に移動します。<strong>Melody Atelierからは歌詞・曲構成・BPM・拍子・ガイド音声をまとめて取り込めます。</strong></p><div id="bridgeStatus" class="bridge-status" aria-live="polite">Melody Atelierの連携ZIPを読み込めます。</div>
       <div class="timeline-scroll" id="timelineScroll"><div class="timeline-inner" id="timelineInner"><div id="ruler" class="ruler"></div><div id="arrangeStrip" class="arrange-strip"></div><div id="lanes" class="lanes"></div><div id="globalPlayhead" class="global-playhead"></div></div></div>
       <div class="timeline-controls"><label>横方向の拡大 <input id="zoom" type="range" min="24" max="130" step="2" value="48"></label><span>クリップを選ぶと微調整・削除ができます</span></div>
@@ -75,7 +75,7 @@
     <section class="panel export-panel" aria-labelledby="export-title">
       <div class="section-head"><div><span class="overline">06 / SAVE & EXPORT</span><h3 id="export-title">曲を保存する</h3></div><span class="tag">ローカル保存</span></div>
       <div class="export-controls"><label class="check"><input id="normalize" type="checkbox" checked> WAVの音量を正規化</label><label class="check"><input id="tail" type="checkbox" checked> 残響の余韻を残す</label></div>
-      <label class="check bridge-toggle"><input id="includeGuideExport" type="checkbox"> ガイド音声も完成WAVに混ぜる（通常OFF：歌声だけ書き出す）</label><div class="export-buttons"><button id="exportVocalsOnly" class="btn primary">↓ ボーカルのみWAV（0秒同期）</button> <button id="exportMix" class="btn primary">↓ 曲全体を24bit WAVで保存</button><button id="backupBtn" class="btn ghost">↓ プロジェクト一式ZIPで保存</button><button id="restoreBtn" class="btn ghost">↑ プロジェクトZIPから復元</button></div>
+      <label class="check bridge-toggle"><input id="includeGuideExport" type="checkbox"> ガイド音声も完成WAVに混ぜる（通常OFF：歌声だけ書き出す）</label><div class="export-buttons"><button id="musicExportBtn" class="btn primary">↗ Music Atelierへボーカル連携ZIP</button><button id="exportVocalsOnly" class="btn primary">↓ ボーカルのみWAV（0秒同期）</button> <button id="exportMix" class="btn primary">↓ 曲全体を24bit WAVで保存</button><button id="backupBtn" class="btn ghost">↓ プロジェクト一式ZIPで保存</button><button id="restoreBtn" class="btn ghost">↑ プロジェクトZIPから復元</button></div>
       <p class="note">大切な曲はZIPでバックアップしてください。自動保存はiPadのSafariデータに依存し、消去・容量整理・URL変更で読み込めなくなる場合があります。復元すると現在の編集内容は置き換わります。</p>
     </section>
     <details class="help"><summary>使い方・無料でiPadに入れる方法</summary><div><p>① 歌詞とBPMを入力 → ② ブロックを選び録音 → ③ レイヤーを追加してハモリを録音 → ④ タイムラインでタイミングを調整 → ⑤ WAVやZIPを書き出します。</p><p>Netlifyは不要。GitHub Pagesの無料公開リポジトリにこの一式を配置し、公開HTTPSのURLをiPad Safariで開きます。共有→「ホーム画面に追加」でアプリのように使用できます。初回アクセスとアップデート時はネット接続が必要です。インストール後もオフライン状態での動作は端末・Safari側のキャッシュ維持状況に依存します。</p><p>コードはGitHubで公開されますが、歌詞や録音音声はブラウザー内のIndexedDBに保存し、このアプリからサーバーへアップロードしません。既存Netlifyサイトとは別の保存領域です。</p></div></details>
@@ -89,7 +89,7 @@
     <p class="note">複製先は元ブロックの直後に追加されます。並べ替えた後も、元の録音は削除されません。</p>
   </form>
 </dialog>
-<input id="fileInput" type="file" accept="audio/*,.wav,.mp3,.m4a,.aac" hidden><input id="bridgeInput" type="file" accept=".zip,application/zip" hidden><input id="backupInput" type="file" accept=".zip,application/zip" hidden>
+<input id="fileInput" type="file" accept="audio/*,.wav,.mp3,.m4a,.aac" hidden><input id="musicInput" type="file" accept=".zip,application/zip" hidden><input id="bridgeInput" type="file" accept=".zip,application/zip" hidden><input id="backupInput" type="file" accept=".zip,application/zip" hidden>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script src="./app.js" defer></script>
 </body></html>

@@ -47,3 +47,29 @@ iPad Safari向け、無料のボーカル録音・構成・ミックスWebアプ
 GitHub Pagesの公開リポジトリ `Voice-Atelier-Song-Studio` にZIP**内の** `index.html`, `app.js`, `styles.css`, `capture-worklet.js`, `sw.js`, `manifest.webmanifest`, `icon.svg` を配置。更新前は必ずプロジェクトZIPをバックアップしてください。GitHubに公開されるのはソースファイルで、録音や歌詞は明示的にアップロードしない限り公開されません。同じURLなら端末の自動保存を引き継ぐ設計です。初回HTTPS接続時はネット環境が必要です。
 
 左側の歌詞パネルと右側の録音/ミックスパネルは独立スクロールに対応しています。iPad Safari実機の録音、長尺データやオフラインの安定動作は今後確認が必要です。
+
+
+## Music Atelier ↔ Voice Atelier v0.3.5 連携
+「Music連携ZIPを取り込む」から Music Atelier が書き出した無圧縮ZIPを読み込みます。
+ZIPの中身は `bridge.json`、`accompaniment.wav`、任意の `melody.wav` です。
+`bridge.json` 例:
+```json
+{
+  "format": "music-voice-bridge",
+  "version": 1,
+  "title": "Song",
+  "projectId": "optional-id",
+  "bpm": 120,
+  "beats": 4,
+  "audioFile": "accompaniment.wav",
+  "guideFile": "melody.wav",
+  "sections": [
+    {"name": "Intro", "lyrics": "", "startBeat": 0, "bars": 4},
+    {"name": "Verse", "lyrics": "歌詞", "startBeat": 16, "bars": 8}
+  ]
+}
+```
+WAVは曲の0秒を先頭とし、無音のイントロも含めます。ZIPは圧縮方式STORE（無圧縮）、各WAVは200MB以内、15分以内です。
+伴奏とメロディーガイドは別々のガイドトラックに入り、ボーカルのみの書き出しから除外されます。
+録音後「Music Atelierへボーカル連携ZIP」で、`bridge.json`（`format: voice-music-bridge`, `version: 1`, `audioFile: vocals-0sec.wav`, `startSeconds: 0`）と `vocals-0sec.wav` を書き出します。
+Music Atelier側にもこの形式のインポート機能が必要です。現時点ではMusic Atelier実機での相互運用は未検証です。
