@@ -274,10 +274,75 @@
     const mute=box.querySelector('.clip-mute');mute.textContent=c.mute?'ミュート解除':'ミュート';mute.onclick=()=>{c.mute=!c.mute;saveSoon();renderTimeline();renderInspector();scheduleReplay();};
     box.querySelector('.clip-export').onclick=()=>downloadBlob(wav24(c.buffer),`${clean(st.projectName)}-${clean(c.filename)}-RAW.wav`);
     box.querySelector('.clip-delete').onclick=()=>void deleteClip(c.id);
+    renderTrimEditor(box,c);
     const offset=box.querySelector('.clip-offset');offset.value=c.offsetSec;function updateOffset(v){c.offsetSec=clamp(v,-600,1200);saveSoon();renderTimeline();renderInspector();scheduleReplay();}
     offset.onchange=()=>updateOffset(+offset.value);box.querySelector('.nudge-left').onclick=()=>updateOffset(+(c.offsetSec-.05).toFixed(3));box.querySelector('.nudge-right').onclick=()=>updateOffset(+(c.offsetSec+.05).toFixed(3));
     const volume=box.querySelector('.clip-volume');volume.value=c.volume;box.querySelector('.clip-vol-value').textContent=`${c.volume}%`;volume.oninput=()=>{c.volume=+volume.value;box.querySelector('.clip-vol-value').textContent=`${c.volume}%`;saveSoon();scheduleReplay();};
     const sel=box.querySelector('.clip-section');sel.replaceChildren(...st.sections.map(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name;return o;}));sel.value=c.sectionId;sel.onchange=()=>{const absolute=clipAt(c);c.sectionId=sel.value;c.offsetSec=+(absolute-secAt(getSection(c.sectionId))).toFixed(3);saveSoon();renderTimeline();renderInspector();scheduleReplay();};
+  }
+  function renderTrimEditor(box,c){
+    const editor=document.createElement('div');editor.className='trim-editor';
+    editor.innerHTML=`<strong>✂ 音声トリミング・前後をつなぐ</strong><p>選んだ音声の秒数で範囲を指定します。冒頭・末尾を削る場合も、途中の不要な部分を消す場合も使えます。原音はミュートして残します。</p>
+      <div class="trim-fields"><label>削除開始（秒）<input class="trim-from" type="number" min="0" step="0.01" inputmode="decimal"></label>
+      <label>削除終了（秒）<input class="trim-to" type="number" min="0" step="0.01" inputmode="decimal"></label></div>
+      <div class="trim-actions"><button class="btn ghost small trim-begin">冒頭を削る</button><button class="btn ghost small trim-middle">指定範囲を削ってつなぐ</button><button class="btn ghost small trim-end">末尾を削る</button></div>
+      <label>つなぎ目のクロスフェード <select class="trim-fade"><option value="0">なし</option><option value="0.005">5ms</option><option value="0.01" selected>10ms</option><option value="0.025">25ms</option><option value="0.05">50ms</option></select></label>
+      <small class="trim-hint"></small>`;
+    box.append(editor);
+    const from=editor.querySelector('.trim-from'),to=editor.querySelector('.trim-to'),hint=editor.querySelector('.trim-hint');
+    const d=c.buffer.duration;from.max=to.max=d;from.value='0';to.value=Math.min(d,1).toFixed(2);
+    hint.textContent=`音声全体：0.00〜${d.toFixed(2)}秒。編集すると残りを詰めて1つの音声にします。`;
+    const run=async mode=>{
+      const a=mode==='begin'?0:Number(from.value),b=mode==='end'?d:Number(to.value);
+      if(!Number.isFinite(a)||!Number.isFinite(b)||a<0||b>d+.00001||b-a<.005){toast('削除範囲を正しく指定してください（5ms以上）。');return;}
+      if(a<=0&&b>=d-.00001){toast('音声全体を削除することはできません。');return;}
+      const fade=Number(editor.querySelector('.trim-fade').value);
+      await trimAndJoinClip(c,a,b,fade);
+    };
+    editor.querySelector('.trim-begin').onclick=()=>run('begin');
+    editor.querySelector('.trim-middle').onclick=()=>run('middle');
+    editor.querySelector('.trim-end').onclick=()=>run('end');
+  }
+  async function trimAndJoinClip(c,from,to,fadeSec){
+    if(st.recording||st.starting||st.stopping)return toast('録音中は編集できません。');
+    if(st.clips.length>=MAX_CLIPS)return toast('クリップ上限です。不要なクリップを削除してください。');
+    const source=c.buffer,rate=source.sampleRate,d=source.duration;
+    const spans=visibleSpans(c).flatMap(span=>{
+      const parts=[];if(span.start<from-.00001)parts.push({start:span.start,end:Math.min(from,span.end)});
+      if(span.end>to+.00001)parts.push({start:Math.max(to,span.start),end:span.end});
+      return parts.filter(x=>x.end-x.start>.00001);
+    });
+    if(!spans.length)return toast('残る音声がありません。');
+    const fadeFrames=Math.max(0,Math.round(fadeSec*rate));
+    const lengths=spans.map(x=>Math.max(1,Math.round(x.end*rate)-Math.round(x.start*rate)));
+    const overlaps=lengths.slice(1).map((n,i)=>Math.min(fadeFrames,Math.floor(n/2),Math.floor(lengths[i]/2)));
+    const total=lengths.reduce((a,b)=>a+b,0)-overlaps.reduce((a,b)=>a+b,0);
+    if(total<1||total>rate*MAX_IMPORT_SEC)return toast('編集後の音声が長すぎます。');
+    stopForArrangement();
+    const ctx=await audioCtx(false),out=ctx.createBuffer(source.numberOfChannels,total,rate);
+    for(let ch=0;ch<source.numberOfChannels;ch++){
+      const src=source.getChannelData(ch),dst=out.getChannelData(ch);let pos=0;
+      for(let k=0;k<spans.length;k++){
+        const start=Math.round(spans[k].start*rate),len=lengths[k],overlap=k?overlaps[k-1]:0;
+        pos-=overlap;
+        for(let j=0;j<len;j++){
+          const idx=pos+j;if(idx>=total)break;
+          const value=src[Math.min(src.length-1,start+j)];
+          if(j<overlap){const t=(j+1)/(overlap+1);dst[idx]=dst[idx]*(1-t)+value*t;}
+          else dst[idx]=value;
+        }
+        pos+=len;
+      }
+    }
+    const first=spans[0].start;
+    const newClip={id:id('c'),sectionId:c.sectionId,laneId:c.laneId,
+      offsetSec:c.offsetSec+first,volume:c.volume,mute:false,
+      filename:c.filename+'（トリミング）',buffer:out,blob:wav24(out),cuts:[]};
+    const originalMuted=c.mute;c.mute=true;
+    st.clips.push(newClip);st.selectedClip=newClip.id;
+    try{await saveClip(newClip);}catch(e){st.clips.pop();c.mute=originalMuted;st.selectedClip=c.id;throw e;}
+    saveSoon();renderAll();scheduleReplay();
+    toast('不要部分を削除し、前後をつなぎました。元音声はミュートで残っています。',6000);
   }
   async function deleteClip(cid){if(st.recording)return toast('録音中に削除できません。');const c=getClip(cid);if(!c||!confirm(`「${c.filename}」を削除しますか？取り消しできません。`))return;stopForArrangement();const latest=st.overwriteHistory.at(-1);if(latest?.newClipId===cid){for(const item of latest.previous){const original=getClip(item.id);if(original){original.cuts=safeCuts(item.cuts);if(typeof item.mute==='boolean')original.mute=item.mute;}}st.overwriteHistory.pop();}else if(st.overwriteHistory.some(x=>x.newClipId===cid)){toast('古い上書き録音を削除しました。上書き範囲は残るため、必要ならZIPバックアップから復元してください。',6500);}if(st.db)try{await dbDelete('clips',cid);}catch(e){console.warn(e);toast('保存領域からの削除に失敗しました');}st.clips=st.clips.filter(x=>x.id!==cid);st.selectedClip='';saveSoon();renderTimeline();renderInspector();}
   function renderAll(){refreshPickers();renderSections();renderTimeline();renderInspector();renderEffects();updateButtons();}

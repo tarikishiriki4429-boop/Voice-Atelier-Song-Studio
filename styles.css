@@ -77,3 +77,6 @@
 /* Leave enough room for the inline + and delete controls on iPad. */
 .lane-header{min-width:218px;width:218px}.global-playhead{left:218px}.lane-name{min-width:0}.lane-controls{flex-shrink:0}
 @media(max-width:700px){.lane-header{min-width:200px;width:200px}.global-playhead{left:200px}}
+
+/* Non-destructive trim/join inspector */
+.trim-editor{margin-top:14px;padding:12px;border:1px solid var(--line,#5555);border-radius:12px;display:grid;gap:9px}.trim-editor p{margin:0;font-size:.85em;opacity:.85}.trim-fields,.trim-actions{display:flex;gap:8px;flex-wrap:wrap}.trim-fields label{flex:1;min-width:120px}.trim-fields input{width:100%;box-sizing:border-box}.trim-hint{opacity:.75}.trim-editor select{max-width:160px}
