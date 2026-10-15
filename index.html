@@ -15,7 +15,7 @@
 <body>
 <div class="app">
   <header class="site-header">
-    <div class="brand"><span class="brand-icon">◉</span><div><small>SONGWRITING WORKSPACE</small><h1>Voice Atelier <span class="version">SONG STUDIO · v0.3.3</span></h1></div></div>
+    <div class="brand"><span class="brand-icon">◉</span><div><small>SONGWRITING WORKSPACE</small><h1>Voice Atelier <span class="version">SONG STUDIO · v0.3.4</span></h1></div></div>
     <div class="privacy">● 端末内録音 / サーバー送信なし</div>
   </header>
   <main>
@@ -75,7 +75,7 @@
     <section class="panel export-panel" aria-labelledby="export-title">
       <div class="section-head"><div><span class="overline">06 / SAVE & EXPORT</span><h3 id="export-title">曲を保存する</h3></div><span class="tag">ローカル保存</span></div>
       <div class="export-controls"><label class="check"><input id="normalize" type="checkbox" checked> WAVの音量を正規化</label><label class="check"><input id="tail" type="checkbox" checked> 残響の余韻を残す</label></div>
-      <label class="check bridge-toggle"><input id="includeGuideExport" type="checkbox"> ガイド音声も完成WAVに混ぜる（通常OFF：歌声だけ書き出す）</label><div class="export-buttons"><button id="exportMix" class="btn primary">↓ 曲全体を24bit WAVで保存</button><button id="backupBtn" class="btn ghost">↓ プロジェクト一式ZIPで保存</button><button id="restoreBtn" class="btn ghost">↑ プロジェクトZIPから復元</button></div>
+      <label class="check bridge-toggle"><input id="includeGuideExport" type="checkbox"> ガイド音声も完成WAVに混ぜる（通常OFF：歌声だけ書き出す）</label><div class="export-buttons"><button id="exportVocalsOnly" class="btn primary">↓ ボーカルのみWAV（0秒同期）</button> <button id="exportMix" class="btn primary">↓ 曲全体を24bit WAVで保存</button><button id="backupBtn" class="btn ghost">↓ プロジェクト一式ZIPで保存</button><button id="restoreBtn" class="btn ghost">↑ プロジェクトZIPから復元</button></div>
       <p class="note">大切な曲はZIPでバックアップしてください。自動保存はiPadのSafariデータに依存し、消去・容量整理・URL変更で読み込めなくなる場合があります。復元すると現在の編集内容は置き換わります。</p>
     </section>
     <details class="help"><summary>使い方・無料でiPadに入れる方法</summary><div><p>① 歌詞とBPMを入力 → ② ブロックを選び録音 → ③ レイヤーを追加してハモリを録音 → ④ タイムラインでタイミングを調整 → ⑤ WAVやZIPを書き出します。</p><p>Netlifyは不要。GitHub Pagesの無料公開リポジトリにこの一式を配置し、公開HTTPSのURLをiPad Safariで開きます。共有→「ホーム画面に追加」でアプリのように使用できます。初回アクセスとアップデート時はネット接続が必要です。インストール後もオフライン状態での動作は端末・Safari側のキャッシュ維持状況に依存します。</p><p>コードはGitHubで公開されますが、歌詞や録音音声はブラウザー内のIndexedDBに保存し、このアプリからサーバーへアップロードしません。既存Netlifyサイトとは別の保存領域です。</p></div></details>

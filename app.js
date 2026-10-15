@@ -417,6 +417,20 @@
       if($('normalize').checked){let peak=0;for(let ch=0;ch<buffer.numberOfChannels;ch++){const a=buffer.getChannelData(ch);for(let i=0;i<a.length;i++)peak=Math.max(peak,Math.abs(a[i]));}if(peak>.00001)factor=Math.pow(10,-1/20)/peak;}
       downloadBlob(wav24(buffer,factor),`${clean(st.projectName)}-MIX-24bit.wav`);toast('曲全体を24bit WAVで書き出しました。ファイルアプリに保存してください。');
     }catch(e){console.error(e);toast(`ミックスの書き出しに失敗：${e.message}`,6500);}finally{setSaveStatus(st.db?'自動保存済み':'保存不可');updateButtons();}}
+  async function exportVocalsOnly(){
+    if(!st.clips.some(c=>c.buffer&&!getLane(c.laneId)?.guide))return toast('ボーカル録音がありません。');
+    if(!OfflineContext)return toast('この端末はWAV合成に対応していません。');
+    const btn=$('exportVocalsOnly');btn.disabled=true;setSaveStatus('ボーカル専用WAV作成中…');
+    try{const seconds=duration();if(seconds>MAX_MIX_SEC)throw Error('15分の上限を超えています。');
+      const rate=st.ctx?.sampleRate||44100,offline=new OfflineContext(2,Math.ceil(seconds*rate),rate);
+      buildSources(offline,0,0,{excludeGuide:true});const buffer=await offline.startRendering();
+      let peak=0;for(let ch=0;ch<buffer.numberOfChannels;ch++)for(const x of buffer.getChannelData(ch))peak=Math.max(peak,Math.abs(x));
+      const factor=$('normalize').checked&&peak>.00001?Math.pow(10,-1/20)/peak:1;
+      downloadBlob(wav24(buffer,factor),`${clean(st.projectName)}-VOCALS-0sec-24bit.wav`);
+      toast('曲の0秒から同期したボーカル専用WAVを書き出しました。');
+    }catch(e){console.error(e);toast('ボーカル書き出し失敗：'+e.message,6500);}
+    finally{btn.disabled=false;setSaveStatus(st.db?'自動保存済み':'保存不可');}
+  }
   const encoder=new TextEncoder(),decoder=new TextDecoder();
   const crcTable=(()=>{const a=new Uint32Array(256);for(let n=0;n<256;n++){let x=n;for(let i=0;i<8;i++)x=x&1?0xedb88320^(x>>>1):x>>>1;a[n]=x>>>0;}return a;})();
   function crc32(bytes){let c=0xffffffff;for(const x of bytes)c=crcTable[(c^x)&255]^(c>>>8);return(c^0xffffffff)>>>0;}
@@ -465,11 +479,13 @@
     const button=$('bridgeImportBtn');button.disabled=true;setSaveStatus('連携データを確認中…');
     try{
       const entries=readZipStore(new Uint8Array(await file.arrayBuffer()));
-      const metadata=entries.get('bridge.json'),guideBytes=entries.get('guide.wav');
-      if(!metadata||!guideBytes)throw Error('Melody Atelierの「Voice Atelierへ渡すZIP」を選んでください。');
+      const metadata=entries.get('bridge.json');
+      if(!metadata)throw Error('bridge.jsonがありません。');
       if(metadata.length>4*1024*1024)throw Error('メロディー情報が大きすぎます。');
       const d=JSON.parse(decoder.decode(metadata));
-      if(d.format!=='melody-voice-bridge'||d.version!==1||!Array.isArray(d.sections))throw Error('この連携データ形式には対応していません。');
+      if(d.format!=='melody-voice-bridge'||![1,2].includes(d.version)||!Array.isArray(d.sections))throw Error('この連携データ形式には対応していません。');
+      const guideBytes=entries.get(d.version===2?'melody.wav':'guide.wav'),accompanimentBytes=d.version===2?entries.get('accompaniment.wav'):null;
+      if(!guideBytes||(d.version===2&&!accompanimentBytes))throw Error('メロディーまたは伴奏のWAVがありません。');
       if(d.sections.length<1||d.sections.length>40)throw Error('連携できるブロック数は1〜40個です。');
       const bpm=clamp(d.bpm,40,240),beats=[3,4,6].includes(+d.beats)?+d.beats:4;
       if(!Number.isFinite(+d.bpm)||Math.abs(bpm-d.bpm)>.01||!([3,4,6].includes(+d.beats)))throw Error('BPMや拍子の情報が不正です。');
@@ -481,8 +497,8 @@
       if(approximateEnd>MAX_MIX_SEC+60)throw Error('曲の構成が長すぎます（約15分以内にしてください）。');
       if(guideBytes.byteLength>MAX_IMPORT_BYTES)throw Error('ガイド音声が大きすぎます（200MBまで）。');
       if(decoder.decode(guideBytes.subarray(0,4))!=='RIFF'||decoder.decode(guideBytes.subarray(8,12))!=='WAVE')throw Error('ガイド音声がWAV形式ではありません。');
-      const ctx=await audioCtx(false),sound=await ctx.decodeAudioData(guideBytes.slice().buffer);
-      if(sound.duration>MAX_IMPORT_SEC+.01)throw Error('ガイド音声は15分までです。');
+      const ctx=await audioCtx(false),sound=await ctx.decodeAudioData(guideBytes.slice().buffer),accompanimentSound=accompanimentBytes?await ctx.decodeAudioData(accompanimentBytes.slice().buffer):null;
+      if(sound.duration>MAX_IMPORT_SEC+.01||(accompanimentSound&&accompanimentSound.duration>MAX_IMPORT_SEC+.01))throw Error('ガイド音声は15分までです。');
       if(st.clips.length&&!confirm(`現在の曲には録音・音声が${st.clips.length}件あります。
 【重要】連携ZIPを読み込むと、現在の歌詞・構成・録音はすべて置き換わります。
 先に「プロジェクト一式ZIPで保存」してありますか？`))return;
@@ -491,19 +507,23 @@
       const lanes=[...defaultLaneNames.map((name,i)=>makeLane(name,i))],guideLane=makeLane('♪ メロディーガイド',lanes.length);
       guideLane.guide=true;guideLane.volume=65;guideLane.fx={...FX,hp:40,low:0,mid:0,high:0,deess:0,compressor:0,reverb:0,gate:0};lanes.push(guideLane);
       const guideClip={id:id('c'),sectionId:sections[0].id,laneId:guideLane.id,offsetSec:0,volume:100,mute:false,filename:'Melody Atelier ガイド音声',blob:new Blob([guideBytes],{type:'audio/wav'}),buffer:sound};
-      const title=String(d.title||'Melody Atelierからの曲').slice(0,60),bridgeInfo={format:'melody-voice-bridge',version:1,title,importedAt:new Date().toISOString(),includesChords:!!d.includesChords};
+       const accompanimentLane=accompanimentSound?makeLane('♫ コード伴奏',lanes.length):null;
+       if(accompanimentLane){accompanimentLane.guide=true;accompanimentLane.volume=75;accompanimentLane.fx={...guideLane.fx};lanes.push(accompanimentLane);}
+       const accompanimentClip=accompanimentLane?{id:id('c'),sectionId:sections[0].id,laneId:accompanimentLane.id,offsetSec:0,volume:100,mute:false,filename:'Melody Atelier コード伴奏',blob:new Blob([accompanimentBytes],{type:'audio/wav'}),buffer:accompanimentSound}:null;
+       const importedClips=accompanimentClip?[guideClip,accompanimentClip]:[guideClip];
+      const title=String(d.title||'Melody Atelierからの曲').slice(0,60),bridgeInfo={format:'melody-voice-bridge',version:d.version,title,importedAt:new Date().toISOString(),includesChords:!!d.includesChords};
       // Entire IndexedDB transaction commits atomically before changing in-memory state.
       if(st.db){
         await new Promise((resolve,reject)=>{
-          const tx=st.db.transaction(['settings','clips'],'readwrite'),clips=tx.objectStore('clips');clips.clear();clips.put(guideClip.blob,guideClip.id);
-          tx.objectStore('settings').put({...allData(),projectName:title,bpm,beats,sections,lanes,clips:[safeClip(guideClip)],selectedSection:sections[0].id,selectedLane:lanes[0].id,bridge:bridgeInfo,overwriteHistory:[],includeGuideExport:false},'songStudioProjectV2');
+          const tx=st.db.transaction(['settings','clips'],'readwrite'),clips=tx.objectStore('clips');clips.clear();for(const c of importedClips)clips.put(c.blob,c.id);
+          tx.objectStore('settings').put({...allData(),projectName:title,bpm,beats,sections,lanes,clips:importedClips.map(safeClip),selectedSection:sections[0].id,selectedLane:lanes[0].id,bridge:bridgeInfo,overwriteHistory:[],includeGuideExport:false},'songStudioProjectV2');
           tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
         });
       }
-      st.projectName=title;st.bpm=bpm;st.beats=beats;st.sections=sections;st.lanes=lanes;st.clips=[guideClip];
+      st.projectName=title;st.bpm=bpm;st.beats=beats;st.sections=sections;st.lanes=lanes;st.clips=importedClips;
       st.bridge=bridgeInfo;st.overwriteHistory=[];st.selectedSection=sections[0].id;st.selectedLane=lanes[0].id;st.selectedClip=guideClip.id;st.position=0;
       $('includeGuideExport').checked=false;syncUI();renderAll();saveSoon();
-      $('bridgeStatus').textContent=`✓ ${sections.length}ブロック／BPM ${bpm}／${beats}拍子／ガイド ${sTime(sound.duration)}。歌声を別レイヤーに録音できます。`;
+      $('bridgeStatus').textContent=`✓ ${sections.length}ブロック／BPM ${bpm}／${beats}拍子／ガイド ${sTime(sound.duration)}${accompanimentSound?'／伴奏 '+sTime(accompanimentSound.duration):''}。歌声を別レイヤーに録音できます。`;
       toast('Melody Atelierから歌詞・曲構成・BPM・ガイド音声を読み込みました。',6500);
     }catch(e){console.error(e);toast('連携ZIPを読み込めません：'+e.message,7200);}
     finally{setSaveStatus(st.db?'自動保存済み':'端末保存不可');updateButtons();}
@@ -529,7 +549,7 @@
     $('zoom').oninput=e=>{st.zoom=+e.target.value;renderTimeline();};$('zoom').onchange=saveSoon;
     $('importBtn').onclick=()=>$('fileInput').click();$('fileInput').onchange=e=>{void importAudio(e.target.files?.[0]);e.target.value='';};
     $('bridgeImportBtn').onclick=()=>$('bridgeInput').click();$('bridgeInput').onchange=e=>{void importMelodyBridge(e.target.files?.[0]);e.target.value='';};
-    $('exportMix').onclick=()=>void exportMix();$('backupBtn').onclick=()=>void backup();$('restoreBtn').onclick=()=>$('backupInput').click();$('backupInput').onchange=e=>{void restoreZip(e.target.files?.[0]);e.target.value='';};
+    $('exportMix').onclick=()=>void exportMix();$('exportVocalsOnly').onclick=()=>void exportVocalsOnly();$('backupBtn').onclick=()=>void backup();$('restoreBtn').onclick=()=>$('backupInput').click();$('backupInput').onchange=e=>{void restoreZip(e.target.files?.[0]);e.target.value='';};
     $('normalize').onchange=saveSoon;$('includeGuideExport').onchange=saveSoon;$('tail').onchange=saveSoon;
     window.addEventListener('resize',()=>{renderTimeline();});
     window.addEventListener('beforeunload',e=>{if(st.recording){e.preventDefault();e.returnValue='';}});
